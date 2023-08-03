@@ -30,6 +30,7 @@ AS
 
 /* "Parameters" */
 DECLARE @Tibble                 NVARCHAR(30) = '$tmp$';     /* Temp cdc capture instance name prepended to the original capture instance name */
+DECLARE @RemoveColumns          BIT = 0;                    /* If set to true, columns will be removed from the trigger (e.g. not just new ones added). Column will stay in CDC table */
 
 /* Variables */
 DECLARE @ObjectID               INT;                        /* Object ID of the table in CDC */
@@ -95,7 +96,9 @@ BEGIN;
         THROW 50000, @ErrorMEssage, 1;
     END;    
 
+	/* check if we have to remove columns or add extra columns */
     /* Loop over all the CDC tables that do not have the latest columns */
+	/* Depending on @RemoveColumns we either check only for missing columns or also remove columns from trigger if audit table has more columns */
     DECLARE CDCObjects CURSOR LOCAL FAST_FORWARD FOR
         SELECT
              ct.object_id
@@ -109,7 +112,11 @@ BEGIN;
             ct.source_object_id
             ,ct.object_id
         HAVING
-            MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0)
+		   -- cdc table has more columns than source table
+		   (@RemoveColumns = 1 AND COUNT(cc.column_id) > (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   OR
+		   -- cdc table has less columns than source table
+		   (@RemoveColumns = 0 AND MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
         ;
 
     OPEN CDCObjects;
@@ -263,7 +270,7 @@ END;
 -- Modification History
 --
 -- 2023-07-04 Rony Meyer    Initial Version.
-
+-- 2023-07-28 Rony Meyer    Added option to remove columns from the trigger
 -------------------------------------------------------------------------------
 
 GO
