@@ -49,7 +49,8 @@ DECLARE @ColumnOrdinal          INT;                        /* Ordinal value for
 DECLARE @IsComputed             BIT;                        /* Flag to show if the column is a computed column */
 DECLARE @OriginalCDCObjectID    INT;                        /* Object ID for the original CDC capture instance */
 DECLARE @NewCDCObjectID         INT;                        /* Object ID for the temp CDC capture instance we create, then destroy later */
-DECLARE @columnList             NVARCHAR(MAX);              /* Placeholder for all columns for which we enabled CDC. This are all columns excluding computed columns */
+DECLARE @ColumnList             NVARCHAR(MAX);              /* Placeholder for all columns for which we enabled CDC. This are all columns excluding computed columns */
+DECLARE @SourceTableName        NVARCHAR(MAX);              /* The name of the source table for which the CDC capture instance is setup */
 
 /*
  * WARNING: Cursors are everywhere in this code!  Its nasty, but its a necessary nasty.
@@ -103,6 +104,7 @@ BEGIN;
         SELECT
              ct.object_id
              ,ct.source_object_id
+			 ,OBJECT_NAME(ct.source_object_id)
         FROM
             cdc.captured_columns AS cc
             INNER JOIN cdc.change_tables AS ct
@@ -123,7 +125,7 @@ BEGIN;
         ;
 
     OPEN CDCObjects;
-    FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID;
+    FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID, @SourceTableName;
 
     WHILE (@@FETCH_STATUS = 0)
     BEGIN;
@@ -133,9 +135,10 @@ BEGIN;
               ,@ObjectName = OBJECT_NAME(@ObjectID)
               ,@CaptureInstance = (SELECT TOP 1 capture_instance FROM cdc.change_tables WHERE source_object_id = @ObjectID ORDER BY create_date)
 			   /* Get a list of all columns excluding computed columns */
-			  ,@columnList = CASE WHEN @UseCustomColumnsTable = 0 THEN
-			                      STUFF( ( SELECT  ',' + isc.name + '' FROM sys.columns isc WHERE object_id = @ObjectID AND is_computed = 0 FOR XML PATH('') ), 1,1,'')
-						     ELSE STUFF( ( SELECT  ',' + isc.Name + '' FROM EntityProperty isc WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1 FOR XML PATH('') ), 1,1,'')
+			  ,@ColumnList = CASE WHEN @UseCustomColumnsTable = 0 THEN
+			                      STUFF( ( SELECT  ',' + isc.[name] + '' FROM sys.columns isc WHERE object_id = @ObjectID AND is_computed = 0 FOR XML PATH('') ), 1,1,'')
+						     ELSE STUFF( ( SELECT  ',' + isc.[Name] + '' FROM EntityProperty isc WHERE isc.EntityId = @SourceTableName AND isc.[Audit] = 1 FOR XML PATH('') ), 1,1,'')
+							 END
 							 ;
 
         SELECT @TmpCaptureInstance = @Tibble + '_' + @CaptureInstance
@@ -143,7 +146,7 @@ BEGIN;
         PRINT 'Create temporary CDC ' + @SchemaName + '.' + @ObjectName + ' with instantce name ' + @TmpCaptureInstance;
 
         /* Add a new CDC capture instance to the object with the temp name */
-        EXEC sys.sp_cdc_enable_table @source_schema = @SchemaName, @source_name = @ObjectName, @capture_instance = @TmpCaptureInstance, @role_name = NULL, @captured_column_list = @columnList;
+        EXEC sys.sp_cdc_enable_table @source_schema = @SchemaName, @source_name = @ObjectName, @capture_instance = @TmpCaptureInstance, @role_name = NULL, @captured_column_list = @ColumnList;
 
         /* Add the new columns to CDC table */
         DECLARE cColumns CURSOR LOCAL FAST_FORWARD FOR
@@ -247,7 +250,7 @@ BEGIN;
         EXEC(@SQL);
 
         /* Get the next CDC object to modify */
-        FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID;
+        FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID, @SourceTableName;
 
         CLOSE cColumns;
         DEALLOCATE cColumns;
@@ -279,6 +282,7 @@ END;
 -- 2023-07-28 Rony Meyer    Added option to remove columns from the trigger
 -- 2023-08-04 Rony Meyer    Removed @MaxColumnID
 -- 2023-08-04 Rony Meyer    Added @UseCustomColumnsTable to have a custom table to retrieve the columns instead of sys.columns
+-- 2023-08-04 Rony Meyer    Added @SourceTableName to make column select query work
 -------------------------------------------------------------------------------
 
 GO
