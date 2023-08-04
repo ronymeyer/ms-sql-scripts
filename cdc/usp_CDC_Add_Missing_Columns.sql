@@ -34,7 +34,6 @@ DECLARE @RemoveColumns          BIT = 0;                    /* If set to true, c
 
 /* Variables */
 DECLARE @ObjectID               INT;                        /* Object ID of the table in CDC */
-DECLARE @MaxColumnID            INT;                        /* Max column_id being captured currently */
 DECLARE @ErrorMessage           NVARCHAR(MAX);              /* Error message holder */
 DECLARE @SchemaName             NVARCHAR(128);              /* Schema name of the object under CDC */
 DECLARE @ObjectName             NVARCHAR(128);              /* Object name of the object under CDC */
@@ -103,7 +102,6 @@ BEGIN;
         SELECT
              ct.object_id
              ,ct.source_object_id
-             ,MAX(cc.column_id)        AS MaxCapturedColumnID
         FROM
             cdc.captured_columns AS cc
             INNER JOIN cdc.change_tables AS ct
@@ -120,7 +118,7 @@ BEGIN;
         ;
 
     OPEN CDCObjects;
-    FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID, @MaxColumnID;
+    FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID;
 
     WHILE (@@FETCH_STATUS = 0)
     BEGIN;
@@ -241,7 +239,7 @@ BEGIN;
         EXEC(@SQL);
 
         /* Get the next CDC object to modify */
-        FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID, @MaxColumnID;
+        FETCH NEXT FROM CDCObjects INTO @OriginalCDCObjectID, @ObjectID;
 
         CLOSE cColumns;
         DEALLOCATE cColumns;
@@ -271,6 +269,7 @@ END;
 --
 -- 2023-07-04 Rony Meyer    Initial Version.
 -- 2023-07-28 Rony Meyer    Added option to remove columns from the trigger
+-- 2023-08-04 Rony Meyer    Removed @MaxColumnID
 -------------------------------------------------------------------------------
 
 GO
