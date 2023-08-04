@@ -30,7 +30,8 @@ AS
 
 /* "Parameters" */
 DECLARE @Tibble                 NVARCHAR(30) = '$tmp$';     /* Temp cdc capture instance name prepended to the original capture instance name */
-DECLARE @RemoveColumns          BIT = 0;                    /* If set to true, columns will be removed from the trigger (e.g. not just new ones added). Column will stay in CDC table */
+DECLARE @RemoveColumns          BIT = 1;                    /* If set to true, columns will be removed from the trigger (e.g. not just new ones added). Column will stay in CDC table */
+DECLARE @UseCustomColumnsTable  BIT = 1;                    /* If set to true, columns will be retrieved from a custom columns table instead of sys.columns */
 
 /* Variables */
 DECLARE @ObjectID               INT;                        /* Object ID of the table in CDC */
@@ -111,10 +112,14 @@ BEGIN;
             ,ct.object_id
         HAVING
 		   -- cdc table has more columns than source table
-		   (@RemoveColumns = 1 AND COUNT(cc.column_id) > (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 1 AND COUNT(cc.column_id) > (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   OR
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=1 AND COUNT(cc.column_id) > (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1))
 		   OR
 		   -- cdc table has less columns than source table
-		   (@RemoveColumns = 0 AND MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 0 AND MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   OR
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=0 AND COUNT(cc.column_id) < (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1))
         ;
 
     OPEN CDCObjects;
@@ -128,7 +133,10 @@ BEGIN;
               ,@ObjectName = OBJECT_NAME(@ObjectID)
               ,@CaptureInstance = (SELECT TOP 1 capture_instance FROM cdc.change_tables WHERE source_object_id = @ObjectID ORDER BY create_date)
 			   /* Get a list of all columns excluding computed columns */
-			  ,@columnList = STUFF( ( SELECT  ',' + isc.name + '' FROM sys.columns isc WHERE object_id = @ObjectID AND is_computed = 0 FOR XML PATH('') ), 1,1,'');
+			  ,@columnList = CASE WHEN @UseCustomColumnsTable = 0 THEN
+			                      STUFF( ( SELECT  ',' + isc.name + '' FROM sys.columns isc WHERE object_id = @ObjectID AND is_computed = 0 FOR XML PATH('') ), 1,1,'')
+						     ELSE STUFF( ( SELECT  ',' + isc.Name + '' FROM EntityProperty isc WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1 FOR XML PATH('') ), 1,1,'')
+							 ;
 
         SELECT @TmpCaptureInstance = @Tibble + '_' + @CaptureInstance
 
@@ -270,6 +278,7 @@ END;
 -- 2023-07-04 Rony Meyer    Initial Version.
 -- 2023-07-28 Rony Meyer    Added option to remove columns from the trigger
 -- 2023-08-04 Rony Meyer    Removed @MaxColumnID
+-- 2023-08-04 Rony Meyer    Added @UseCustomColumnsTable to have a custom table to retrieve the columns instead of sys.columns
 -------------------------------------------------------------------------------
 
 GO
