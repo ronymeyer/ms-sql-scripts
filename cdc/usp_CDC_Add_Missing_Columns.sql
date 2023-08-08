@@ -116,12 +116,12 @@ BEGIN;
 		   -- cdc table has more columns than source table
 		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 1 AND COUNT(cc.column_id) > (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
 		   OR
-		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=1 AND COUNT(cc.column_id) > (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1))
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=1 AND COUNT(cc.column_id) > (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
 		   OR
 		   -- cdc table has less columns than source table
 		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 0 AND MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
 		   OR
-		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=0 AND COUNT(cc.column_id) < (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Audit = 1))
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=0 AND COUNT(cc.column_id) < (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
         ;
 
     OPEN CDCObjects;
@@ -137,7 +137,7 @@ BEGIN;
 			   /* Get a list of all columns excluding computed columns */
 			  ,@ColumnList = CASE WHEN @UseCustomColumnsTable = 0 THEN
 			                      STUFF( ( SELECT  ',' + isc.[name] + '' FROM sys.columns isc WHERE object_id = @ObjectID AND is_computed = 0 FOR XML PATH('') ), 1,1,'')
-						     ELSE STUFF( ( SELECT  ',' + isc.[Name] + '' FROM EntityProperty isc WHERE isc.EntityId = @SourceTableName AND isc.[Audit] = 1 FOR XML PATH('') ), 1,1,'')
+						     ELSE STUFF( ( SELECT  ',' + isc.[Name] + '' FROM EntityProperty isc WHERE isc.EntityId = @SourceTableName AND [Active] = 1 AND isc.[Audit] = 1 FOR XML PATH('') ), 1,1,'')
 							 END
 							 ;
 
@@ -283,6 +283,7 @@ END;
 -- 2023-08-04 Rony Meyer    Removed @MaxColumnID
 -- 2023-08-04 Rony Meyer    Added @UseCustomColumnsTable to have a custom table to retrieve the columns instead of sys.columns
 -- 2023-08-04 Rony Meyer    Added @SourceTableName to make column select query work
+-- 2023-08-08 Rony Meyer    Only select Active columns from @SourceTableName
 -------------------------------------------------------------------------------
 
 GO
