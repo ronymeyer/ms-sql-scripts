@@ -109,6 +109,7 @@ BEGIN;
             cdc.captured_columns AS cc
             INNER JOIN cdc.change_tables AS ct
                 ON cc.object_id = ct.object_id
+		WHERE cc.is_computed = 0
         GROUP BY
             ct.source_object_id
             ,ct.object_id
@@ -285,6 +286,7 @@ END;
 -- 2023-08-04 Rony Meyer    Added @SourceTableName to make column select query work
 -- 2023-08-08 Rony Meyer    Only select Active columns from @SourceTableName
 -- 2023-08-09 Rony Meyer    When @RemoveColumns is set and there are extra columns those will be added as well
+-- 2023-08-09 Rony Meyer    Exclude computed cc columns
 -------------------------------------------------------------------------------
 
 GO
