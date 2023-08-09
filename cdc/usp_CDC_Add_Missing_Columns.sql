@@ -180,13 +180,17 @@ BEGIN;
             ,c.is_computed
         FROM
             sys.columns AS c
-            INNER JOIN LastColumn AS lc
-                ON c.object_id = lc.source_object_id
             INNER JOIN sys.types AS t
                 ON c.user_type_id = t.user_type_id
-        WHERE
-            c.column_id > lc.MaxColumnID
-			AND c.is_computed = 0;
+            INNER JOIN LastColumn AS lc
+                ON c.object_id = lc.source_object_id
+        WHERE c.is_computed = 0
+		  AND (   (@UseCustomColumnsTable = 0 AND c.column_id > lc.MaxColumnID)
+		       OR 
+			      (@UseCustomColumnsTable = 1 AND EXISTS (select 1 from EntityProperty where EntityId = OBJECT_NAME(c.object_id) AND Name = c.name AND [Active] = 1 AND [Audit] = 1
+                                                                and name not in (select column_name from cdc.captured_columns where object_id = @OriginalCDCObjectID))
+                  )
+		      );
 
         OPEN cColumns;
         FETCH NEXT FROM cColumns INTO @ColumnName, @ColumnID, @ColumnDataType, @ColumnTypeName, @IsComputed;
@@ -298,6 +302,7 @@ END;
 -- 2023-08-09 Rony Meyer    Exclude computed cc columns
 -- 2023-08-09 Rony Meyer    Delete removed columns from cdc.captured_columns
 -- 2023-08-09 Rony Meyer    Move removed columns from cdc.captured_columns to after sproc creation
+-- 2023-08-09 Rony Meyer    Use @UseCustomColumnsTable for column retrieval to add new columns
 -------------------------------------------------------------------------------
 
 GO
