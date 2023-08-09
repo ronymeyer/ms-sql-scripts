@@ -227,6 +227,14 @@ BEGIN;
             source_object_id = @ObjectID 
         AND object_id != @OriginalCDCObjectID
 
+		IF @RemoveColumns = 1
+		BEGIN
+           PRINT 'Remove columns from cdc.captured_columns for ' + QUOTENAME(OBJECT_SCHEMA_NAME(@OriginalCDCObjectID)) + '.' + QUOTENAME(OBJECT_NAME(@OriginalCDCObjectID));
+
+		   DELETE FROM cdc.captured_columns WHERE object_id = @OriginalCDCObjectID and column_name not in (SELECT isc.[Name] FROM EntityProperty isc WHERE isc.EntityId = @SourceTableName AND [Active] = 1 AND isc.[Audit] = 1)
+		END
+
+
         PRINT 'Update CDC sprocs';
 
         /* batch insert proc */
@@ -287,6 +295,7 @@ END;
 -- 2023-08-08 Rony Meyer    Only select Active columns from @SourceTableName
 -- 2023-08-09 Rony Meyer    When @RemoveColumns is set and there are extra columns those will be added as well
 -- 2023-08-09 Rony Meyer    Exclude computed cc columns
+-- 2023-08-09 Rony Meyer    Delete removed columns from cdc.captured_columns
 -------------------------------------------------------------------------------
 
 GO
