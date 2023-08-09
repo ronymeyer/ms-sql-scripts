@@ -113,15 +113,15 @@ BEGIN;
             ct.source_object_id
             ,ct.object_id
         HAVING
-		   -- cdc table has more columns than source table
-		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 1 AND COUNT(cc.column_id) > (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
+		   -- cdc table has more or less columns than source table
+		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 1 AND COUNT(cc.column_id) <> (SELECT count(1) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
 		   OR
-		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=1 AND COUNT(cc.column_id) > (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns = 1 AND COUNT(cc.column_id) <> (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
 		   OR
 		   -- cdc table has less columns than source table
 		   (@UseCustomColumnsTable = 0 AND @RemoveColumns = 0 AND MAX(cc.column_id) < (SELECT MAX(column_id) FROM sys.columns AS c WHERE c.object_id = ct.source_object_id AND is_computed = 0))
 		   OR
-		   (@UseCustomColumnsTable = 1 AND @RemoveColumns=0 AND COUNT(cc.column_id) < (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
+		   (@UseCustomColumnsTable = 1 AND @RemoveColumns = 0 AND COUNT(cc.column_id) < (SELECT count(1) FROM EntityProperty AS c WHERE c.EntityId = OBJECT_NAME(ct.source_object_id) AND Active = 1 AND Audit = 1))
         ;
 
     OPEN CDCObjects;
@@ -284,6 +284,7 @@ END;
 -- 2023-08-04 Rony Meyer    Added @UseCustomColumnsTable to have a custom table to retrieve the columns instead of sys.columns
 -- 2023-08-04 Rony Meyer    Added @SourceTableName to make column select query work
 -- 2023-08-08 Rony Meyer    Only select Active columns from @SourceTableName
+-- 2023-08-09 Rony Meyer    When @RemoveColumns is set and there are extra columns those will be added as well
 -------------------------------------------------------------------------------
 
 GO
